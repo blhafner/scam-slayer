@@ -15,6 +15,7 @@ import {
   custom,
   parseAbi,
   encodeFunctionData,
+  getAddress,
   type Address,
   type Hex,
 } from "viem";
@@ -405,6 +406,55 @@ export async function createBudgetDelegation(
 // MAX_UINT256 — used to create an "unlimited" test approval from the smart
 // account, mirroring the riskiest real-world approval pattern.
 const MAX_UINT256 = (1n << 256n) - 1n;
+
+/**
+ * Deploy a fresh, unverified Spender contract from the connected EOA (MetaMask
+ * signs). Returns its address. Used to seed mock-malicious approvals that point
+ * at an unknown, unverified, brand-new contract — what the risk heuristics flag.
+ */
+export async function deployMaliciousSpender(alchemyKey?: string): Promise<Address> {
+  const { SPENDER_BYTECODE } = await import("./spenderBytecode");
+  const { client: walletClient, address } = await getWalletClient();
+  const publicClient = getPublicClient(alchemyKey);
+  const hash = await walletClient.deployContract({
+    account: address,
+    chain: getChain(),
+    abi: [],
+    bytecode: SPENDER_BYTECODE,
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (!receipt.contractAddress) {
+    throw new Error("Spender deployment produced no contract address");
+  }
+  return getAddress(receipt.contractAddress);
+}
+
+/**
+ * Grant an unlimited (MAX) ERC-20 approval from the connected EOA to a spender
+ * via MetaMask. Waits for the receipt; throws on revert. This is the EOA-owned
+ * "mock-malicious" approval — directly revocable via revokeApprovalDirect.
+ */
+export async function createEoaMaxApproval(
+  tokenAddress: Address,
+  spender: Address,
+  alchemyKey?: string
+): Promise<Hex> {
+  const { client: walletClient, address } = await getWalletClient();
+  const publicClient = getPublicClient(alchemyKey);
+  const hash = await walletClient.writeContract({
+    account: address,
+    chain: getChain(),
+    address: tokenAddress,
+    abi: ERC20_APPROVE_ABI,
+    functionName: "approve",
+    args: [spender, MAX_UINT256],
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") {
+    throw new Error("Approval transaction reverted");
+  }
+  return hash;
+}
 
 /**
  * Build a viem bundler client wired for Pimlico.

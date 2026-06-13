@@ -39,6 +39,8 @@ import {
   revokeApprovalDirect,
   createSmartAccountApproval,
   ensureSmartAccountDeployed,
+  deployMaliciousSpender,
+  createEoaMaxApproval,
   shortenAddress,
   USDC_DECIMALS,
 } from "../lib/wallet";
@@ -175,6 +177,7 @@ export interface AppState {
   autoThreshold: number;
   rescanning: boolean;
   creatingApproval: boolean;
+  seeding: boolean;
 
   // ---- Actions ----
   setShowSettings: (open: boolean) => void;
@@ -203,6 +206,7 @@ export interface AppState {
   kill: (approval: TokenApproval) => Promise<void>;
   sweep: (opts?: { manual?: boolean }) => Promise<void>;
   createTestApproval: (spender: string) => Promise<void>;
+  seedMaliciousApprovals: () => Promise<void>;
   runScanTick: () => void;
 }
 
@@ -247,6 +251,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   autoThreshold: 90,
   rescanning: false,
   creatingApproval: false,
+  seeding: false,
 
   // ---- Simple setters ----
   setShowSettings: (open) => set({ showSettings: open }),
@@ -1219,6 +1224,59 @@ Heuristic Risk Score: ${threat.riskScore}/100`,
       );
     }
     set({ creatingApproval: false });
+  },
+
+  // Seed real mock-malicious approvals on Sepolia from the connected EOA: deploy
+  // a fresh unverified spender, then grant unlimited (MAX) approvals to it across
+  // several Sepolia ERC-20s. These appear as EOA-owned threats (unlimited →
+  // unknown, unverified, brand-new spender) and are directly revocable. Live
+  // only; each step is a MetaMask signature paid from the connected wallet.
+  seedMaliciousApprovals: async () => {
+    const { addLog, pushToast, config, eoaAddress, demoMode, rescan } = get();
+    if (demoMode) {
+      addLog("Seeding is live-only — connect a real Sepolia wallet.", "warn");
+      return;
+    }
+    if (!eoaAddress) {
+      addLog("Connect your wallet first.", "warn");
+      return;
+    }
+    if (!CHAINS[config.chainId]?.supportsSmartAccountDemo) {
+      addLog("Seeding malicious approvals is wired for Sepolia only.", "warn");
+      return;
+    }
+    // Sepolia ERC-20s the app already scopes/scans.
+    const tokens: { sym: string; addr: Address }[] = [
+      { sym: "USDC", addr: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" },
+      { sym: "WETH", addr: "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9" },
+      { sym: "LINK", addr: "0x779877A7B0D9E8603169DdbD7836e478b4624789" },
+    ];
+    set({ seeding: true });
+    try {
+      addLog("🩸 Deploying fresh malicious spender (sign in MetaMask)...", "ai");
+      const spender = await deployMaliciousSpender(config.alchemyApiKey);
+      addLog(`✓ Spender deployed: ${shortenAddress(spender)} (unverified, brand new)`, "success");
+      pushToast(`Malicious spender deployed ${shortenAddress(spender)}`, "warn");
+
+      for (const t of tokens) {
+        addLog(`🩸 Approving MAX ${t.sym} → ${shortenAddress(spender)} (sign in MetaMask)...`, "ai");
+        try {
+          const hash = await createEoaMaxApproval(t.addr, spender, config.alchemyApiKey);
+          addLog(`✓ ${t.sym} unlimited approval set — ${shortenAddress(hash)}`, "danger");
+        } catch (err: any) {
+          addLog(`${t.sym} approval failed: ${err?.message || err}`, "warn");
+        }
+      }
+
+      addLog("🩸 Seeded malicious approvals — rescanning to surface threats...", "ai");
+      await rescan(false);
+      pushToast("Malicious approvals seeded — scan shows new threats", "danger");
+    } catch (err: any) {
+      addLog(`Seed failed: ${err?.message || err}`, "danger");
+      addLog("Most common cause: the connected wallet has no Sepolia ETH for gas.", "warn");
+    } finally {
+      set({ seeding: false });
+    }
   },
 
   // Scan loop tick — drives the progress bar AND triggers a real on-chain rescan
