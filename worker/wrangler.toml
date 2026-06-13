@@ -1,0 +1,12 @@
+name = "scam-slayer-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Secrets (DO NOT put values here) — set with:
+#   wrangler secret put VENICE_API_KEY
+#   wrangler secret put INFURA_KEY
+#   wrangler secret put ETHERSCAN_KEY
+#
+# Non-secret config: the browser origins allowed to call this proxy.
+[vars]
+ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"

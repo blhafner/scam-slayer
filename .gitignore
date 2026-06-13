@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.*.local
+*.local
+.DS_Store
+*.tsbuildinfo
+.claude/settings.local.json
+# worker has its own .gitignore (.dev.vars, .wrangler)
