@@ -60,6 +60,7 @@ export function DashboardView() {
     selectedThreat, veniceResult, analysisModelLabel, analyzing, killAnimation,
     x402WalletAddress, x402BalanceUsd, x402CanConsume, x402MinimumTopUpUsd, x402StatusError,
     log, analyzeThreat, analyze, kill, createTestApproval, creatingApproval, clearSelection,
+    seedMaliciousApprovals, seeding,
   } = store;
 
   const operatorAddress = store.operatorAddress ?? eoaAddress;
@@ -362,6 +363,24 @@ export function DashboardView() {
             onClick={() => createTestApproval(testSpender)}
           >
             {creatingApproval ? "Creating..." : "Create Approval"}
+          </button>
+        </div>
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #1e1e3a" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#ff9aa2", marginBottom: 4 }}>
+            🩸 Seed Malicious Approvals (EOA)
+          </div>
+          <div style={{ fontSize: 10, color: "#4a5568", marginBottom: 12, lineHeight: 1.6 }}>
+            Deploys a fresh, unverified spender contract and grants unlimited (MAX) USDC / WETH / LINK
+            approvals to it from <strong>your connected wallet</strong> — real on-chain threats you can
+            then analyze and revoke directly. One MetaMask signature per step; needs a little Sepolia ETH.
+          </div>
+          <button
+            className={`btn ${seeding ? "btn-ghost" : "btn-danger"}`}
+            style={{ padding: "8px 16px", fontSize: 10, whiteSpace: "nowrap", width: "100%" }}
+            disabled={seeding}
+            onClick={() => seedMaliciousApprovals()}
+          >
+            {seeding ? "Seeding malicious approvals…" : "🩸 Seed Malicious Approvals on Sepolia"}
           </button>
         </div>
       </div>
