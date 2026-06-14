@@ -112,6 +112,9 @@ export function isRangeLimitError(error: unknown): boolean {
     msg.includes("response size") ||
     msg.includes("query returned more than") ||
     msg.includes("logs matched") ||
+    msg.includes("ranges over") || // drpc: "ranges over 10000 blocks are not supported"
+    msg.includes("limited to") || // 1rpc/others: "limited to 0 - 50 blocks"
+    msg.includes("exceed maximum") || // publicnode: "exceed maximum block range: 50000"
     (msg.includes("up to") && msg.includes("range"))
   );
 }
@@ -121,10 +124,22 @@ export function isRangeLimitError(error: unknown): boolean {
 // "up to a 10 block range" phrasing and a suggested "[0x.., 0x..]" range.
 export function parseAllowedRange(error: unknown): bigint | null {
   const msg = collectErrorText(error);
-  const upTo = msg.match(/up to (?:a )?(\d+)\s*block/i);
-  if (upTo) {
-    const n = BigInt(upTo[1]);
-    if (n > 0n) return n;
+  // Provider phrasings that state an allowed block span. Order matters only in
+  // that the first match wins; each captures the span as group 1.
+  const spanPhrasings = [
+    /up to (?:a )?(\d+)\s*block/i, //                    Alchemy: "up to a 10 block range"
+    /limited to\s*\d+\s*-\s*(\d+)\s*block/i, //          1rpc: "limited to 0 - 50 blocks"
+    /ranges over\s*(\d+)\s*block/i, //                   drpc: "ranges over 10000 blocks"
+    /maximum block range:?\s*(\d+)/i, //                 publicnode: "exceed maximum block range: 50000"
+    /block range of\s*(\d+)/i,
+    /(\d+)\s*block range/i, //                           generic "N block range"
+  ];
+  for (const re of spanPhrasings) {
+    const m = msg.match(re);
+    if (m) {
+      const n = BigInt(m[1]);
+      if (n > 0n) return n;
+    }
   }
   const suggested = msg.match(/\[\s*(0x[0-9a-fA-F]+)\s*,\s*(0x[0-9a-fA-F]+)\s*\]/);
   if (suggested) {

@@ -73,7 +73,7 @@ export const CHAINS: Record<number, ChainConfig> = {
     alchemySubdomain: null,
     publicRpc:
       import.meta.env.VITE_SEPOLIA_RPC ||
-      rpcFor("sepolia", "https://ethereum-sepolia-rpc.publicnode.com"),
+      rpcFor("sepolia", "https://sepolia.gateway.tenderly.co"),
     wideRange: true,
     explorer: "https://sepolia.etherscan.io",
     supportsSmartAccountDemo: true,
@@ -85,7 +85,7 @@ export const CHAINS: Record<number, ChainConfig> = {
     alchemySubdomain: null,
     publicRpc:
       import.meta.env.VITE_MAINNET_RPC ||
-      rpcFor("mainnet", "https://ethereum-rpc.publicnode.com"),
+      rpcFor("mainnet", "https://mainnet.gateway.tenderly.co"),
     wideRange: true,
     explorer: "https://etherscan.io",
     supportsSmartAccountDemo: false,
@@ -97,7 +97,7 @@ export const CHAINS: Record<number, ChainConfig> = {
     alchemySubdomain: null,
     publicRpc:
       import.meta.env.VITE_BASE_RPC ||
-      rpcFor("base-mainnet", "https://base-rpc.publicnode.com"),
+      rpcFor("base-mainnet", "https://base.gateway.tenderly.co"),
     wideRange: true,
     explorer: "https://basescan.org",
     supportsSmartAccountDemo: false,
@@ -109,7 +109,7 @@ export const CHAINS: Record<number, ChainConfig> = {
     alchemySubdomain: null,
     publicRpc:
       import.meta.env.VITE_LINEA_RPC ||
-      rpcFor("linea-mainnet", "https://linea-rpc.publicnode.com"),
+      rpcFor("linea-mainnet", "https://linea.gateway.tenderly.co"),
     wideRange: true,
     explorer: "https://lineascan.build",
     supportsSmartAccountDemo: false,
@@ -133,7 +133,7 @@ export const CHAINS: Record<number, ChainConfig> = {
     alchemySubdomain: null,
     publicRpc:
       import.meta.env.VITE_POLYGON_RPC ||
-      rpcFor("polygon-mainnet", "https://polygon-bor-rpc.publicnode.com"),
+      rpcFor("polygon-mainnet", "https://polygon.gateway.tenderly.co"),
     wideRange: true,
     explorer: "https://polygonscan.com",
     supportsSmartAccountDemo: false,
