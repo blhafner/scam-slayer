@@ -148,6 +148,17 @@ describe("RPC error classification", () => {
     expect(parseAllowedRange(err)).toBe(10n);
   });
 
+  it("parses range caps from publicnode / drpc / 1rpc phrasings", () => {
+    expect(isRangeLimitError(new Error("exceed maximum block range: 50000"))).toBe(true);
+    expect(parseAllowedRange(new Error("exceed maximum block range: 50000"))).toBe(50000n);
+
+    expect(isRangeLimitError(new Error("ranges over 10000 blocks are not supported on freetier"))).toBe(true);
+    expect(parseAllowedRange(new Error("ranges over 10000 blocks are not supported on freetier"))).toBe(10000n);
+
+    expect(isRangeLimitError(new Error("eth_getLogs is limited to 0 - 50 blocks range"))).toBe(true);
+    expect(parseAllowedRange(new Error("eth_getLogs is limited to 0 - 50 blocks range"))).toBe(50n);
+  });
+
   it("parses a suggested [from, to] hex range into a span", () => {
     const err = new Error("Try with this block range [0x64, 0xc7].");
     expect(parseAllowedRange(err)).toBe(0xc7n - 0x64n + 1n);
