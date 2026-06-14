@@ -12,7 +12,7 @@ import { shortenAddress } from "../lib/wallet";
 import { CHAINS, explorerAddress, explorerTx } from "../lib/chains";
 import { formatUsd } from "../lib/prices";
 import { logColor } from "../styles";
-import { RiskBar } from "./widgets";
+import { RiskBar, riskLabel, InfoDot, Collapsible, Pulse } from "./widgets";
 
 // Dollar-at-risk badge: what min(balance, allowance) × price can drain today.
 // Unknown stays honest ("exposure ?") instead of inventing a number.
@@ -55,7 +55,7 @@ export function DashboardView() {
   const store = useAppStore();
   const {
     eoaAddress, agentAddress, subAgentAddress, budget, config, demoMode,
-    approvals, kills, delegationUsesLeft, scanProgress, agentActive,
+    approvals, kills, delegationUsesLeft,
     autoMode, autoThreshold, setAutoMode, setAutoThreshold, sweep, rescan, rescanning,
     selectedThreat, veniceResult, analysisModelLabel, analyzing, killAnimation,
     x402WalletAddress, x402BalanceUsd, x402CanConsume, x402MinimumTopUpUsd, x402StatusError,
@@ -129,283 +129,89 @@ export function DashboardView() {
     reader.readAsDataURL(file);
   };
 
+  const riskyCount = threats.length;
+
   return (
     <div style={{ animation: "fadeIn 0.5s ease-out" }}>
-      {/* Stats */}
+      {/* Plain-language summary: what's happening, in one sentence. */}
+      <div className="card" style={{ marginBottom: 16, borderColor: riskyCount ? "#ff2d5540" : "#1e1e3a" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#fff", marginBottom: 4, fontFamily: "'Space Grotesk',sans-serif" }}>
+              {demoMode
+                ? "Demo — showing example approvals"
+                : riskyCount > 0
+                ? `${riskyCount} risky approval${riskyCount !== 1 ? "s" : ""} on ${chainLabel}`
+                : approvals.length > 0
+                ? `Monitoring ${approvals.length} approval${approvals.length !== 1 ? "s" : ""} on ${chainLabel}`
+                : `No approvals found on ${chainLabel}`}
+            </div>
+            <div style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.6, maxWidth: 620 }}>
+              A token approval lets a contract move your tokens. Scammers trick you into unlimited
+              approvals, then drain your wallet. Scam Slayer finds the dangerous ones — sorted by how
+              much they could drain right now — and revokes them in one click.
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 10, color: "#4a5568", display: "flex", alignItems: "center", gap: 5 }}>
+              <Pulse color={rescanning ? "#ffd60a" : "#00ff9d"} size={6} />
+              {rescanning ? "Rescanning…" : "Monitoring live"}
+            </span>
+            <button
+              className="btn btn-ghost"
+              style={{ padding: "4px 12px", fontSize: 10 }}
+              disabled={rescanning}
+              onClick={() => rescan(false)}
+            >
+              {rescanning ? "…" : "🔄 Rescan"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats — value-first ordering: dollars at risk and risky count lead. */}
       <div className="stats-grid" style={{ marginBottom: 24 }}>
         {[
-          { label: "Active Approvals", value: approvals.length, color: "#c8ccd0" },
           {
-            label: "$ At Risk",
+            label: "Total at risk",
             value: hasAnyExposure ? formatUsd(totalAtRiskUsd) : "—",
             color: totalAtRiskUsd > 0 ? "#ff2d55" : "#00ff9d",
+            info: "Sum of what every approval could drain right now: min(balance, allowance) × price.",
           },
-          { label: "Threats", value: threats.length, color: "#ff2d55" },
-          { label: "Kills", value: kills.length, color: "#00ff9d" },
-          { label: "Uses Left", value: `${delegationUsesLeft}/10`, color: "#ffd60a" },
+          { label: "Risky approvals", value: riskyCount, color: riskyCount ? "#ff2d55" : "#00ff9d", info: "Approvals scored High or Critical risk." },
+          { label: "Active approvals", value: approvals.length, color: "#c8ccd0", info: "Total token permissions this wallet has granted." },
+          { label: "Revoked", value: kills.length, color: "#00ff9d", info: "Approvals you've killed this session." },
+          { label: "Revokes left", value: `${delegationUsesLeft}/10`, color: "#ffd60a", info: "Remaining autonomous revocations allowed by the agent's permission." },
         ].map((s, i) => (
-          <div key={i} className="card" style={{ animation: `slideIn 0.3s ease-out ${i * 0.1}s both` }}>
-            <div style={{ fontSize: 10, color: "#4a5568", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>{s.label}</div>
-            <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 28, fontWeight: 700, color: s.color }}>{s.value}</div>
+          <div key={i} className="card" style={{ animation: `slideIn 0.3s ease-out ${i * 0.08}s both` }}>
+            <div style={{ fontSize: 10, color: "#4a5568", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
+              {s.label}<InfoDot text={s.info} />
+            </div>
+            <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 26, fontWeight: 700, color: s.color }}>{s.value}</div>
           </div>
         ))}
       </div>
 
-      {/* A2A delegation chain (Sepolia smart-account flow only) */}
-      {!directRevokeOnly && (
-      <div className="card" style={{ marginBottom: 16, borderColor: "#6366f140" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <span style={{ fontSize: 10, color: "#6366f1", letterSpacing: 1, textTransform: "uppercase", fontWeight: 600 }}>
-            🤝 A2A Delegation Chain (ERC-7710 Redelegation)
-          </span>
-          <span className="tag" style={{ backgroundColor: relayerMode === "1shot" ? "#00ff9d20" : "#6366f120", color: relayerMode === "1shot" ? "#00ff9d" : "#6366f1" }}>
-            ⛽ {relayerMode === "1shot" ? "1Shot · USDC gas + 7702" : "Pimlico · ETH gas"}
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          {[
-            { role: "Operator", addr: operatorAddress, sub: "MetaMask Smart Account", color: "#00ff9d" },
-            { role: "Coordinator", addr: agentAddress, sub: "approve(addr,0) · 10 calls", color: "#6366f1" },
-            { role: "Revoker", addr: subAgentAddress, sub: "redelegated · 5 calls", color: "#ffd60a" },
-          ].map((n, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ background: "#0a0a14", border: `1px solid ${n.color}40`, borderRadius: 6, padding: "8px 12px", minWidth: 140 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: n.color }}>{n.role}</div>
-                {n.addr ? (
-                  <a href={explorerAddress(n.addr)} target="_blank" rel="noopener noreferrer" className="ext-link" style={{ fontSize: 10, fontFamily: "monospace" }} title={n.addr}>
-                    {shortenAddress(n.addr)} ↗
-                  </a>
-                ) : (
-                  <div style={{ fontSize: 10, color: "#c8ccd0", fontFamily: "monospace" }}>demo</div>
-                )}
-                <div style={{ fontSize: 9, color: "#4a5568" }}>{n.sub}</div>
-              </div>
-              {i < 2 && <span style={{ color: "#6366f1", fontSize: 16 }}>→</span>}
-            </div>
-          ))}
-        </div>
-      </div>
-      )}
-
-      {/* x402 intelligence budget (Sepolia smart-account flow only) */}
-      {!directRevokeOnly && (
-      <div className="card" style={{ marginBottom: 16, borderColor: "#ffd60a40" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <span style={{ fontSize: 10, color: "#ffd60a", letterSpacing: 1, textTransform: "uppercase", fontWeight: 600 }}>
-            💸 x402 Intelligence Budget {x402Enabled ? "(USDC on Base)" : "(client cap)"}
-          </span>
-          <span className="tag" style={{ backgroundColor: x402Enabled ? "#00ff9d20" : "#ffd60a20", color: x402Enabled ? "#00ff9d" : "#ffd60a" }}>
-            {x402Enabled ? "x402 PAY-PER-CALL" : "API KEY"}
-          </span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 11, color: "#c8ccd0" }}>
-          <span>Operator → Agent spend mandate (client-enforced)</span>
-          <span style={{ fontWeight: 600 }}>{budget.spentUsd.toFixed(4)} / {budget.capUsd.toFixed(2)} USDC</span>
-        </div>
-        {x402Enabled && x402WalletAddress && (
-          <div style={{ marginBottom: 6, fontSize: 10, color: "#4a5568" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-              <span>x402 payer wallet</span>
-              <button
-                className="btn btn-ghost"
-                style={{ padding: "2px 8px", fontSize: 9 }}
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(x402WalletAddress);
-                    setCopiedPayer(true);
-                    setTimeout(() => setCopiedPayer(false), 1200);
-                  } catch {
-                    /* clipboard might be unavailable in insecure context */
-                  }
-                }}
-              >
-                {copiedPayer ? "Copied" : "Copy"}
-              </button>
-            </div>
-            <div style={{ color: "#c8ccd0", fontFamily: "monospace", wordBreak: "break-all", lineHeight: 1.5 }}>
-              {x402WalletAddress}
-            </div>
-            {typeof x402BalanceUsd === "number" && (
-              <div style={{ marginTop: 2, color: "#c8ccd0" }}>
-                Balance: {x402BalanceUsd.toFixed(4)} USDC
-              </div>
-            )}
-            {x402CanConsume === false && (
-              <div style={{ marginTop: 2, color: "#ffd60a" }}>
-                Spendable balance not ready. Venice currently reports minimum top-up {x402MinimumTopUpUsd ?? "?"} USDC.
-              </div>
-            )}
-            {x402StatusError && (
-              <div style={{ marginTop: 2, color: "#ff9aa2" }}>
-                x402 status error: {x402StatusError}
-              </div>
-            )}
-          </div>
-        )}
-        <div style={{ width: "100%", height: 4, backgroundColor: "#1a1a2e", borderRadius: 2, overflow: "hidden" }}>
-          <div style={{ width: `${Math.min(100, (budget.spentUsd / budget.capUsd) * 100)}%`, height: "100%", backgroundColor: "#ffd60a", boxShadow: "0 0 8px #ffd60a60", transition: "width 0.6s ease-out" }} />
-        </div>
-      </div>
-      )}
-
-      {/* Autonomous Kill Mode */}
-      <div className="card" style={{ marginBottom: 16, borderColor: autoMode ? "#ff2d5560" : "#1e1e3a" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "#fff", marginBottom: 2 }}>
-              🤖 Autonomous Kill Mode {autoMode && <span style={{ color: "#ff2d55" }}>· ARMED</span>}
-            </div>
-            <div style={{ fontSize: 10, color: "#4a5568", lineHeight: 1.6 }}>
-              Agent auto-revokes approvals at or above the risk threshold — no human in the loop.
-              {!demoMode && autoMode && <span style={{ color: "#ffd60a" }}> Executes real on-chain revocations.</span>}
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 10, color: "#4a5568" }}>Threshold</span>
-              <input
-                type="range" min={40} max={100} step={1} value={autoThreshold}
-                onChange={(e) => setAutoThreshold(Number(e.target.value))}
-                style={{ accentColor: "#ff2d55", width: 100 }}
-              />
-              <span style={{ fontSize: 11, color: "#ff2d55", fontWeight: 600, minWidth: 26 }}>{autoThreshold}</span>
-            </div>
-            <button
-              className="btn btn-ghost"
-              style={{ padding: "6px 12px", fontSize: 10, color: autoMode ? "#ff2d55" : "#6b7280", borderColor: autoMode ? "#ff2d5540" : "#1e1e3a" }}
-              onClick={() => setAutoMode(!autoMode)}
-            >
-              {autoMode ? "ARMED" : "ARM"}
-            </button>
-            <button
-              className="btn btn-danger"
-              style={{ padding: "6px 12px", fontSize: 10, whiteSpace: "nowrap" }}
-              onClick={() => sweep({ manual: true })}
-            >
-              🤖 Sweep Now
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Scan bar */}
-      {agentActive && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <span style={{ fontSize: 10, color: "#4a5568", letterSpacing: 1, textTransform: "uppercase" }}>
-              {rescanning ? "Rescanning on-chain..." : "Scanning..."}
-            </span>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 10, color: "#4a5568" }}>{Math.round(scanProgress)}%</span>
-              <button
-                className="btn btn-ghost"
-                style={{ padding: "2px 10px", fontSize: 9 }}
-                disabled={rescanning}
-                onClick={() => rescan(false)}
-              >
-                {rescanning ? "..." : "🔄 Rescan"}
-              </button>
-            </div>
-          </div>
-          <div style={{ width: "100%", height: 2, backgroundColor: "#1e1e3a", borderRadius: 1, overflow: "hidden" }}>
-            <div style={{ width: `${scanProgress}%`, height: "100%", background: "linear-gradient(90deg,#00ff9d,#00cc7d)", transition: "width 0.2s linear" }} />
-          </div>
-        </div>
-      )}
-
-      {/* Threat submission */}
-      <div className="card" style={{ marginBottom: 16, borderColor: "#6366f140" }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "#fff", marginBottom: 12 }}>🔍 Submit Threat</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            value={url} onChange={(e) => setUrl(e.target.value)}
-            placeholder="Paste suspect URL or contract address..."
-            className="text-input" style={{ flex: 1 }}
-          />
-          <button className="btn btn-ghost" style={{ padding: "6px 12px", fontSize: 10 }} onClick={() => fileRef.current?.click()}>
-            📎
-          </button>
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileUpload} />
-          <button
-            className={`btn ${analyzing ? "btn-ghost" : "btn-primary"}`}
-            style={{ padding: "6px 16px", fontSize: 10 }}
-            disabled={analyzing || !url}
-            onClick={() => { analyze({ context: `Analyze for phishing: ${url}` }); setUrl(""); }}
-          >
-            {analyzing ? "..." : "Analyze"}
-          </button>
-        </div>
-      </div>
-
-      {/* Test helper: create a smart-account-owned approval to demo autonomous revoke (Sepolia only) */}
-      {!directRevokeOnly && (
-      <div className="card" style={{ marginBottom: 16, borderColor: "#ffd60a40" }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "#fff", marginBottom: 4 }}>
-          🧪 Create Test Approval (Smart Account)
-        </div>
-        <div style={{ fontSize: 10, color: "#4a5568", marginBottom: 12, lineHeight: 1.6 }}>
-          Grants an unlimited USDC approval from your operator smart account to the spender below,
-          so the agent can revoke it autonomously via the ERC-7710 chain. Requires the smart account
-          to hold a little Sepolia ETH for gas.
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            value={testSpender}
-            onChange={(e) => setTestSpender(e.target.value)}
-            placeholder="Spender address (e.g. your TestSpender contract)"
-            className="text-input"
-            style={{ flex: 1 }}
-          />
-          <button
-            className={`btn ${creatingApproval ? "btn-ghost" : "btn-primary"}`}
-            style={{ padding: "6px 16px", fontSize: 10, whiteSpace: "nowrap" }}
-            disabled={creatingApproval || !testSpender}
-            onClick={() => createTestApproval(testSpender)}
-          >
-            {creatingApproval ? "Creating..." : "Create Approval"}
-          </button>
-        </div>
-        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #1e1e3a" }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#ff9aa2", marginBottom: 4 }}>
-            🩸 Seed Malicious Approvals (EOA)
-          </div>
-          <div style={{ fontSize: 10, color: "#4a5568", marginBottom: 12, lineHeight: 1.6 }}>
-            Deploys a fresh, unverified spender contract and grants unlimited (MAX) USDC / WETH / LINK
-            approvals to it from <strong>your connected wallet</strong> — real on-chain threats you can
-            then analyze and revoke directly. One MetaMask signature per step; needs a little Sepolia ETH.
-          </div>
-          <button
-            className={`btn ${seeding ? "btn-ghost" : "btn-danger"}`}
-            style={{ padding: "8px 16px", fontSize: 10, whiteSpace: "nowrap", width: "100%" }}
-            disabled={seeding}
-            onClick={() => seedMaliciousApprovals()}
-          >
-            {seeding ? "Seeding malicious approvals…" : "🩸 Seed Malicious Approvals on Sepolia"}
-          </button>
-        </div>
-      </div>
-      )}
-
-      {/* Two-col */}
+      {/* PRIMARY: approvals (the product) + analysis / kill log */}
       <div className="two-col">
         {/* Approvals */}
-        <div className="card" style={{ animation: "glowPulse 3s ease-in-out infinite" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>
-              Token Approvals
-              <span style={{ fontSize: 10, color: "#6366f1", marginLeft: 8, fontWeight: 500 }}>· {chainLabel}</span>
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>Your token approvals</span>
+            <span className="tag" style={{ backgroundColor: riskyCount ? "#ff2d5520" : "#00ff9d20", color: riskyCount ? "#ff2d55" : "#00ff9d" }}>
+              {riskyCount ? `${riskyCount} risky` : "all clear"}
             </span>
-            <span className="tag" style={{ backgroundColor: threats.length ? "#ff2d5520" : "#00ff9d20", color: threats.length ? "#ff2d55" : "#00ff9d" }}>
-              {threats.length} threat{threats.length !== 1 ? "s" : ""}
-            </span>
+          </div>
+          <div style={{ fontSize: 10, color: "#4a5568", marginBottom: 12 }}>
+            Permissions you've granted to move your tokens · {chainLabel}. Click any row for AI analysis.
           </div>
           {/* Controls */}
           <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
             {([
               ["all", `All ${approvals.length}`],
-              ["threats", "Threats"],
+              ["threats", "Risky"],
               ["unverified", "Unverified"],
-              ["max", "Max"],
+              ["max", "Unlimited"],
             ] as const).map(([key, label]) => (
               <button
                 key={key}
@@ -440,8 +246,10 @@ export function DashboardView() {
               Sort: {sortBy === "exposure" ? "$ at risk ↓" : sortBy === "risk" ? "Risk ↓" : "A→Z"}
             </button>
           </div>
-          <div style={{ maxHeight: 360, overflowY: "auto" }}>
-            {visibleApprovals.map((a) => (
+          <div style={{ maxHeight: 420, overflowY: "auto" }}>
+            {visibleApprovals.map((a) => {
+              const rl = riskLabel(a.riskScore);
+              return (
               <div
                 key={a.id}
                 className={killAnimation === a.id ? "kill-flash" : ""}
@@ -450,20 +258,17 @@ export function DashboardView() {
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontWeight: 600, color: a.riskScore > 75 ? "#ff2d55" : a.riskScore > 40 ? "#ffd60a" : "#c8ccd0", fontSize: 12 }}>{a.token}</span>
-                    {a.isMaxApproval && <span className="tag" style={{ backgroundColor: "#ff2d5520", color: "#ff2d55" }}>MAX</span>}
+                    <span style={{ fontWeight: 600, color: rl.color, fontSize: 13 }}>{a.token}</span>
+                    {a.isMaxApproval && <span className="tag" style={{ backgroundColor: "#ff2d5520", color: "#ff2d55" }}>UNLIMITED</span>}
                     {!a.verified && <span className="tag" style={{ backgroundColor: "#ffd60a20", color: "#ffd60a" }}>UNVERIFIED</span>}
-                    <span className="tag" style={{ backgroundColor: a.ownerType === "smart-account" ? "#6366f120" : "#4a556820", color: a.ownerType === "smart-account" ? "#6366f1" : "#6b7280" }}>
-                      {a.ownerType === "smart-account" ? "SA · AGENT" : "EOA · DIRECT"}
+                    <span className="tag" style={{ backgroundColor: a.ownerType === "smart-account" ? "#6366f120" : "#4a556820", color: a.ownerType === "smart-account" ? "#6366f1" : "#9aa0a6" }}>
+                      {a.ownerType === "smart-account" ? "Smart account" : "Your wallet"}
                     </span>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <ExposureBadge a={a} />
-                    <span style={{ fontSize: 11, color: "#4a5568" }}>Risk: {a.riskScore}</span>
-                  </div>
+                  <ExposureBadge a={a} />
                 </div>
-                <div style={{ fontSize: 11, color: "#4a5568", marginBottom: 6 }}>
-                  →{" "}
+                <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>
+                  Granted to{" "}
                   <a
                     href={explorerAddress(a.spender)}
                     target="_blank"
@@ -474,10 +279,14 @@ export function DashboardView() {
                   >
                     {a.spenderLabel || shortenAddress(a.spender)} ↗
                   </a>
-                  {a.contractAge >= 0 && a.contractAge < 7 && <span style={{ color: "#ff2d55", marginLeft: 8 }}>({a.contractAge}d old)</span>}
-                  {a.contractAge < 0 && <span style={{ color: "#4a5568", marginLeft: 8 }}>(age ?)</span>}
+                  {a.contractAge >= 0 && a.contractAge < 7 && <span style={{ color: "#ff2d55", marginLeft: 8 }}>· deployed {a.contractAge}d ago</span>}
+                  {a.contractAge < 0 && <span style={{ color: "#4a5568", marginLeft: 8 }}>· age unknown</span>}
                 </div>
-                <RiskBar score={a.riskScore} />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: rl.color, minWidth: 56 }}>{rl.label} risk</span>
+                  <div style={{ flex: 1 }}><RiskBar score={a.riskScore} /></div>
+                  <span style={{ fontSize: 10, color: "#4a5568", minWidth: 28, textAlign: "right" }}>{a.riskScore}</span>
+                </div>
                 {a.riskScore > 40 && a.riskFactors?.length > 0 && (
                   <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
                     {a.riskFactors.slice(0, 3).map((f, fi) => (
@@ -504,24 +313,32 @@ export function DashboardView() {
                       style={{ padding: "4px 10px", fontSize: 10 }}
                       onClick={(e) => { e.stopPropagation(); analyzeThreat(a); }}
                     >
-                      Analyze
+                      Analyze with AI
                     </button>
                   )}
                   <button
                     className="btn btn-danger"
-                    style={{ padding: "4px 10px", fontSize: 10 }}
+                    style={{ padding: "4px 12px", fontSize: 10 }}
                     disabled={killAnimation === a.id}
                     onClick={(e) => { e.stopPropagation(); kill(a); }}
                   >
-                    🗡️ Revoke
+                    {killAnimation === a.id ? "Revoking…" : "Revoke"}
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
             {visibleApprovals.length === 0 && (
-              <div style={{ textAlign: "center", padding: 40, color: "#4a5568" }}>
+              <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>🛡️</div>
-                {approvals.length === 0 ? "All clear" : "No approvals match this filter"}
+                {approvals.length === 0 ? (
+                  <>
+                    <div style={{ color: "#c8ccd0", marginBottom: 4 }}>No active approvals found.</div>
+                    <div style={{ fontSize: 11 }}>This wallet hasn't granted any token permissions on {chainLabel} — or the scan couldn't reach an RPC. Try Rescan, or add an Alchemy key in Settings.</div>
+                  </>
+                ) : (
+                  "No approvals match this filter."
+                )}
               </div>
             )}
           </div>
@@ -531,22 +348,22 @@ export function DashboardView() {
         {veniceResult || analyzing ? (
           <div className="card" style={{ borderColor: "#ff2d5540", animation: "fadeIn 0.3s ease-out" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: "#ff2d55" }}>🧠 Venice AI Analysis</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#ff2d55" }}>AI threat analysis</span>
               <button className="btn btn-ghost" style={{ padding: "2px 8px", fontSize: 10 }} onClick={clearSelection}>✕</button>
             </div>
             {analyzing ? (
               <div style={{ textAlign: "center", padding: 40 }}>
                 <div style={{ fontSize: 32, marginBottom: 12, animation: "pulse 1s ease-in-out infinite" }}>🧠</div>
-                <div style={{ color: "#6366f1", fontSize: 12 }}>Analyzing with {analysisModelLabel || (isLive ? "live model" : "demo engine")}...</div>
-                <div style={{ color: "#4a5568", fontSize: 10, marginTop: 4 }}>Zero data retention</div>
+                <div style={{ color: "#6366f1", fontSize: 12 }}>Analyzing…</div>
+                <div style={{ color: "#4a5568", fontSize: 10, marginTop: 4 }}>{analysisModelLabel || (isLive ? "live model" : "demo engine")} · zero data retention</div>
               </div>
             ) : veniceResult && (
               <>
                 <div className="caveat-box" style={{ marginBottom: 16 }}>
                   {[
-                    { l: "Model", v: analysisModelLabel || (isLive ? "live model" : "demo"), c: "#6366f1" },
-                    { l: "Verdict", v: veniceResult.is_phishing ? `PHISHING — ${veniceResult.confidence}%` : `CLEAN — ${veniceResult.confidence}%`, c: veniceResult.is_phishing ? "#ff2d55" : "#00ff9d" },
+                    { l: "Verdict", v: veniceResult.is_phishing ? `Phishing — ${veniceResult.confidence}% sure` : `Looks clean — ${veniceResult.confidence}%`, c: veniceResult.is_phishing ? "#ff2d55" : "#00ff9d" },
                     veniceResult.brand_impersonated ? { l: "Impersonating", v: veniceResult.brand_impersonated, c: "#ffd60a" } : null,
+                    { l: "Model", v: analysisModelLabel || (isLive ? "live model" : "demo"), c: "#6366f1" },
                     { l: "Privacy", v: "Zero retention ✓", c: "#00ff9d" },
                   ].filter(Boolean).map((r: any, i) => (
                     <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
@@ -556,9 +373,9 @@ export function DashboardView() {
                   ))}
                 </div>
                 <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 10, color: "#4a5568", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Indicators</div>
+                  <div style={{ fontSize: 10, color: "#4a5568", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>What the AI saw</div>
                   {veniceResult.indicators?.map((ind, i) => (
-                    <div key={i} style={{ fontSize: 11, color: "#c8ccd0", padding: "3px 0", display: "flex", gap: 8, animation: `slideIn 0.3s ease-out ${i * 0.08}s both` }}>
+                    <div key={i} style={{ fontSize: 11, color: "#c8ccd0", padding: "3px 0", display: "flex", gap: 8 }}>
                       <span style={{ color: "#ff2d55" }}>▸</span>{ind}
                     </div>
                   ))}
@@ -566,7 +383,7 @@ export function DashboardView() {
                 {selectedThreat?.riskFactors?.length ? (
                   <div style={{ marginBottom: 16 }}>
                     <div style={{ fontSize: 10, color: "#4a5568", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
-                      Heuristic Risk Factors ({selectedThreat.riskScore}/100)
+                      Why it's risky ({riskLabel(selectedThreat.riskScore).label}, {selectedThreat.riskScore}/100)
                     </div>
                     {selectedThreat.riskFactors.map((f, i) => (
                       <div key={i} style={{ fontSize: 11, color: "#ffd60a", padding: "3px 0", display: "flex", gap: 8 }}>
@@ -584,9 +401,7 @@ export function DashboardView() {
                     style={{ width: "100%", padding: 12, fontSize: 13 }}
                     onClick={() => kill(selectedThreat)}
                   >
-                    {veniceResult.is_phishing
-                      ? "🗡️ EXECUTE KILL — Revoke via Delegation"
-                      : "🗡️ Revoke Approval via Delegation"}
+                    Revoke this {selectedThreat.token} approval
                   </button>
                 )}
               </>
@@ -594,8 +409,8 @@ export function DashboardView() {
           </div>
         ) : (
           <div className="card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>Kill Log</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>Revoked approvals</span>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {kills.length > 0 && (
                   <button className="btn btn-ghost" style={{ padding: "2px 8px", fontSize: 9 }} onClick={exportKills}>
@@ -605,19 +420,20 @@ export function DashboardView() {
                 <span className="tag" style={{ backgroundColor: "#00ff9d20", color: "#00ff9d" }}>{kills.length}</span>
               </div>
             </div>
-            <div style={{ maxHeight: 360, overflowY: "auto" }}>
+            <div style={{ fontSize: 10, color: "#4a5568", marginBottom: 12 }}>Approvals killed this session, with on-chain proof.</div>
+            <div style={{ maxHeight: 420, overflowY: "auto" }}>
               {kills.map((k, i) => (
                 <div key={k.id} style={{ padding: "12px 0", borderBottom: "1px solid #1e1e3a20", animation: `slideIn 0.3s ease-out ${i * 0.05}s both` }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "#00ff9d" }}>🗡️ {k.token}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#00ff9d" }}>✓ {k.token} revoked</span>
                     <span style={{ fontSize: 10, color: "#4a5568" }}>{new Date(k.timestamp).toLocaleDateString()}</span>
                   </div>
                   <div style={{ fontSize: 11, color: "#c8ccd0", marginBottom: 4 }}>{k.threat}</div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 10, color: "#4a5568" }}>Confidence: {k.confidence}%</span>
+                    <span style={{ fontSize: 10, color: "#4a5568" }}>AI confidence: {k.confidence}%</span>
                     {k.txHash ? (
                       <a href={explorerTx(k.txHash)} target="_blank" rel="noopener noreferrer" className="ext-link" style={{ fontSize: 10 }}>
-                        tx: {shortenAddress(k.txHash)} ↗
+                        view tx ↗
                       </a>
                     ) : (
                       <span style={{ fontSize: 10, color: "#6366f1" }}>tx: pending</span>
@@ -626,8 +442,8 @@ export function DashboardView() {
                 </div>
               ))}
               {kills.length === 0 && (
-                <div style={{ textAlign: "center", padding: 40, color: "#4a5568", fontSize: 11 }}>
-                  No kills yet. Click a threat to analyze.
+                <div style={{ textAlign: "center", padding: 40, color: "#6b7280", fontSize: 11 }}>
+                  Nothing revoked yet. Click a risky approval to analyze, then Revoke.
                 </div>
               )}
             </div>
@@ -635,19 +451,210 @@ export function DashboardView() {
         )}
       </div>
 
-      {/* Log */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "#fff", marginBottom: 12 }}>Agent Log</div>
-        <div style={{ maxHeight: 140, overflowY: "auto", fontSize: 10, lineHeight: 2 }}>
+      {/* Autonomous mode — power feature, below the primary flow */}
+      <div className="card" style={{ marginTop: 16, marginBottom: 16, borderColor: autoMode ? "#ff2d5560" : "#1e1e3a" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#fff", marginBottom: 2 }}>
+              🤖 Auto-revoke {autoMode && <span style={{ color: "#ff2d55" }}>· ON</span>}
+            </div>
+            <div style={{ fontSize: 10, color: "#6b7280", lineHeight: 1.6, maxWidth: 460 }}>
+              Automatically revoke approvals at or above the risk threshold — no clicking.
+              {!demoMode && autoMode && <span style={{ color: "#ffd60a" }}> Executes real on-chain revocations.</span>}
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 10, color: "#4a5568" }}>Revoke at risk ≥</span>
+              <input
+                type="range" min={40} max={100} step={1} value={autoThreshold}
+                onChange={(e) => setAutoThreshold(Number(e.target.value))}
+                style={{ accentColor: "#ff2d55", width: 100 }}
+              />
+              <span style={{ fontSize: 11, color: "#ff2d55", fontWeight: 600, minWidth: 26 }}>{autoThreshold}</span>
+            </div>
+            <button
+              className="btn btn-ghost"
+              style={{ padding: "6px 12px", fontSize: 10, color: autoMode ? "#ff2d55" : "#6b7280", borderColor: autoMode ? "#ff2d5540" : "#1e1e3a" }}
+              onClick={() => setAutoMode(!autoMode)}
+            >
+              {autoMode ? "Turn off" : "Turn on"}
+            </button>
+            <button
+              className="btn btn-danger"
+              style={{ padding: "6px 12px", fontSize: 10, whiteSpace: "nowrap" }}
+              onClick={() => sweep({ manual: true })}
+            >
+              Revoke all risky now
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Advanced: the agent + payment internals, demoted (Sepolia smart-account flow only) */}
+      {!directRevokeOnly && (
+        <Collapsible
+          title="Under the hood · agent permission & payments"
+          subtitle="How the agent is authorized to revoke, and how it pays for AI analysis"
+          badge={relayerMode === "1shot" ? "1Shot · USDC gas" : "Pimlico · ETH gas"}
+          accent="#6366f1"
+        >
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 10, color: "#6366f1", letterSpacing: 1, textTransform: "uppercase", fontWeight: 600, marginBottom: 8 }}>
+              Permission chain (ERC-7710 delegation)
+              <InfoDot text="Your smart account grants a revoke-only permission to a Coordinator agent, which passes a tighter version to a Revoker. The agent can ONLY call approve(x,0) — it can never move funds." />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {[
+                { role: "You (operator)", addr: operatorAddress, sub: "your smart account", color: "#00ff9d" },
+                { role: "Coordinator", addr: agentAddress, sub: "revoke-only · 10 uses", color: "#6366f1" },
+                { role: "Revoker", addr: subAgentAddress, sub: "executes the kill · 5 uses", color: "#ffd60a" },
+              ].map((n, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ background: "#0a0a14", border: `1px solid ${n.color}40`, borderRadius: 6, padding: "8px 12px", minWidth: 140 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: n.color }}>{n.role}</div>
+                    {n.addr ? (
+                      <a href={explorerAddress(n.addr)} target="_blank" rel="noopener noreferrer" className="ext-link" style={{ fontSize: 10, fontFamily: "monospace" }} title={n.addr}>
+                        {shortenAddress(n.addr)} ↗
+                      </a>
+                    ) : (
+                      <div style={{ fontSize: 10, color: "#c8ccd0", fontFamily: "monospace" }}>demo</div>
+                    )}
+                    <div style={{ fontSize: 9, color: "#4a5568" }}>{n.sub}</div>
+                  </div>
+                  {i < 2 && <span style={{ color: "#6366f1", fontSize: 16 }}>→</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 10, color: "#ffd60a", letterSpacing: 1, textTransform: "uppercase", fontWeight: 600 }}>
+                AI analysis budget
+                <InfoDot text="The agent pays per AI analysis. With x402 on, it pays in USDC on Base (no API key); otherwise a shared API key is used. Spend is capped." />
+              </span>
+              <span className="tag" style={{ backgroundColor: x402Enabled ? "#00ff9d20" : "#ffd60a20", color: x402Enabled ? "#00ff9d" : "#ffd60a" }}>
+                {x402Enabled ? "x402 pay-per-call" : "API key"}
+              </span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 11, color: "#c8ccd0" }}>
+              <span>Spent / cap</span>
+              <span style={{ fontWeight: 600 }}>{budget.spentUsd.toFixed(4)} / {budget.capUsd.toFixed(2)} USDC</span>
+            </div>
+            <div style={{ width: "100%", height: 4, backgroundColor: "#1a1a2e", borderRadius: 2, overflow: "hidden", marginBottom: 6 }}>
+              <div style={{ width: `${Math.min(100, (budget.spentUsd / budget.capUsd) * 100)}%`, height: "100%", backgroundColor: "#ffd60a", transition: "width 0.6s ease-out" }} />
+            </div>
+            {x402Enabled && x402WalletAddress && (
+              <div style={{ fontSize: 10, color: "#4a5568" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <span>Payer wallet (fund with USDC on Base)</span>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ padding: "2px 8px", fontSize: 9 }}
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(x402WalletAddress);
+                        setCopiedPayer(true);
+                        setTimeout(() => setCopiedPayer(false), 1200);
+                      } catch {
+                        /* clipboard unavailable in insecure context */
+                      }
+                    }}
+                  >
+                    {copiedPayer ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <div style={{ color: "#c8ccd0", fontFamily: "monospace", wordBreak: "break-all", lineHeight: 1.5 }}>{x402WalletAddress}</div>
+                {typeof x402BalanceUsd === "number" && <div style={{ marginTop: 2, color: "#c8ccd0" }}>Balance: {x402BalanceUsd.toFixed(4)} USDC</div>}
+                {x402CanConsume === false && <div style={{ marginTop: 2, color: "#ffd60a" }}>Needs a top-up of at least {x402MinimumTopUpUsd ?? "?"} USDC.</div>}
+                {x402StatusError && <div style={{ marginTop: 2, color: "#ff9aa2" }}>{x402StatusError}</div>}
+              </div>
+            )}
+          </div>
+        </Collapsible>
+      )}
+
+      {/* Testing & manual tools — collapsed by default */}
+      <Collapsible
+        title="Testing & manual tools"
+        subtitle="Check a URL or contract by hand, or create test approvals to try the flow"
+        accent="#6b7280"
+      >
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "#fff", marginBottom: 8 }}>Check a URL or contract</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={url} onChange={(e) => setUrl(e.target.value)}
+              placeholder="Paste a suspect URL or contract address…"
+              className="text-input" style={{ flex: 1 }}
+            />
+            <button className="btn btn-ghost" style={{ padding: "6px 12px", fontSize: 10 }} title="Upload a screenshot" onClick={() => fileRef.current?.click()}>
+              📎
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileUpload} />
+            <button
+              className={`btn ${analyzing ? "btn-ghost" : "btn-primary"}`}
+              style={{ padding: "6px 16px", fontSize: 10 }}
+              disabled={analyzing || !url}
+              onClick={() => { analyze({ context: `Analyze for phishing: ${url}` }); setUrl(""); }}
+            >
+              {analyzing ? "…" : "Analyze"}
+            </button>
+          </div>
+        </div>
+
+        {!directRevokeOnly && (
+          <div style={{ paddingTop: 16, borderTop: "1px solid #1e1e3a" }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "#fff", marginBottom: 4 }}>Create a test approval (smart account)</div>
+            <div style={{ fontSize: 10, color: "#4a5568", marginBottom: 10, lineHeight: 1.6 }}>
+              Grants an unlimited USDC approval from your smart account so the agent can revoke it autonomously. Needs a little Sepolia ETH.
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              <input
+                value={testSpender}
+                onChange={(e) => setTestSpender(e.target.value)}
+                placeholder="Spender address"
+                className="text-input"
+                style={{ flex: 1 }}
+              />
+              <button
+                className={`btn ${creatingApproval ? "btn-ghost" : "btn-primary"}`}
+                style={{ padding: "6px 16px", fontSize: 10, whiteSpace: "nowrap" }}
+                disabled={creatingApproval || !testSpender}
+                onClick={() => createTestApproval(testSpender)}
+              >
+                {creatingApproval ? "Creating…" : "Create approval"}
+              </button>
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "#ff9aa2", marginBottom: 4 }}>Seed malicious approvals (your wallet)</div>
+            <div style={{ fontSize: 10, color: "#4a5568", marginBottom: 10, lineHeight: 1.6 }}>
+              Deploys a fresh unverified spender and grants unlimited USDC / WETH / LINK approvals to it from your wallet — real, directly-revocable threats to demo the kill flow. One signature per step; needs a little Sepolia ETH.
+            </div>
+            <button
+              className={`btn ${seeding ? "btn-ghost" : "btn-danger"}`}
+              style={{ padding: "8px 16px", fontSize: 10, width: "100%" }}
+              disabled={seeding}
+              onClick={() => seedMaliciousApprovals()}
+            >
+              {seeding ? "Seeding…" : "🩸 Seed malicious approvals on Sepolia"}
+            </button>
+          </div>
+        )}
+      </Collapsible>
+
+      {/* Activity log — collapsed by default */}
+      <Collapsible title="Activity log" subtitle="What the agent has done this session" accent="#6b7280">
+        <div style={{ maxHeight: 200, overflowY: "auto", fontSize: 10, lineHeight: 2 }}>
           {log.length === 0 ? (
-            <div style={{ color: "#4a5568" }}>Awaiting activity...</div>
+            <div style={{ color: "#4a5568" }}>Nothing yet.</div>
           ) : log.map((entry, i) => (
-            <div key={i} style={{ color: logColor(entry), animation: i === 0 ? "slideIn 0.2s ease-out" : "none" }}>
+            <div key={i} style={{ color: logColor(entry) }}>
               <span style={{ color: "#2a2a50", marginRight: 8 }}>{entry.time}</span>{entry.msg}
             </div>
           ))}
         </div>
-      </div>
+      </Collapsible>
     </div>
   );
 }
