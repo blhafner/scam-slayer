@@ -7,3 +7,4 @@ dist/
 *.tsbuildinfo
 .claude/settings.local.json
 # worker has its own .gitignore (.dev.vars, .wrangler)
+scripts/.seed-key

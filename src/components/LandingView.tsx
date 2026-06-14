@@ -12,11 +12,15 @@ export function LandingView() {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "70vh", textAlign: "center", animation: "fadeIn 0.5s ease-out" }}>
       <div style={{ fontSize: 64, marginBottom: 24 }}>🗡️</div>
-      <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 36, fontWeight: 700, color: "#fff", marginBottom: 8, letterSpacing: -1 }}>
-        Your wallet has a bodyguard now.
+      <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 36, fontWeight: 700, color: "#fff", marginBottom: 12, letterSpacing: -1 }}>
+        See what your approvals can drain — and kill the dangerous ones.
       </h1>
-      <p style={{ color: "#6b7280", maxWidth: 480, marginBottom: 32, lineHeight: 1.8 }}>
-        Scam Slayer monitors your token approvals, classifies threats with AI vision, and auto-revokes malicious permissions — all within a scoped delegation you control.
+      <p style={{ color: "#9aa0a6", maxWidth: 520, marginBottom: 10, lineHeight: 1.8, fontSize: 14 }}>
+        Every "approve" you sign lets a contract move your tokens. Scammers abuse this to drain wallets.
+      </p>
+      <p style={{ color: "#6b7280", maxWidth: 520, marginBottom: 32, lineHeight: 1.8 }}>
+        Scam Slayer scans your approvals, shows the exact dollars each one puts at risk, and revokes the
+        bad ones in one click — or automatically, under a revoke-only permission you control.
       </p>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
         <button className="btn btn-primary" style={{ padding: "12px 32px", fontSize: 14 }} onClick={connect}>

@@ -1,8 +1,11 @@
 /**
- * DelegationView.tsx — delegation grant screen (moved out of App.tsx).
+ * DelegationView.tsx — delegation grant screen (plain-language).
+ * Leads with what the user is actually agreeing to; the ERC-7710 details sit in
+ * a collapsed "technical details" section.
  */
 
 import { useAppStore } from "../store/appStore";
+import { Collapsible } from "./widgets";
 
 export function DelegationView() {
   const grantDelegation = useAppStore((s) => s.grantDelegation);
@@ -13,47 +16,64 @@ export function DelegationView() {
       <div className="card" style={{ padding: 32 }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🛡️</div>
-          <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 20, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
-            Grant Agent Delegation
+          <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 22, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
+            Let the agent revoke for you
           </h2>
-          <p style={{ color: "#6b7280", fontSize: 12 }}>
-            Your smart account delegates a scoped ERC-7710 permission to a Coordinator agent, which re-delegates an attenuated permission to a Revoker sub-agent (A2A). Agents can ONLY revoke approvals — never spend or transfer.
+          <p style={{ color: "#9aa0a6", fontSize: 13, lineHeight: 1.7 }}>
+            One signature gives Scam Slayer a <strong style={{ color: "#fff" }}>revoke-only</strong> permission,
+            so it can cancel dangerous approvals on your behalf — even automatically. It
+            <strong style={{ color: "#00ff9d" }}> can never move, spend, or transfer your funds.</strong>
           </p>
         </div>
+
+        {/* Plain "what you're allowing" list */}
         <div className="caveat-box">
           <div style={{ fontSize: 10, color: "#00ff9d", letterSpacing: 1, textTransform: "uppercase", marginBottom: 12, fontWeight: 600 }}>
-            Delegation Caveats (ERC-7710)
+            What this permission allows
           </div>
           {[
-            ["Allowed Methods", "approve(address, 0) only"],
-            ["Scope", "Revoke approvals — no transfers"],
-            ["Rate Limit", "10 revocations / day"],
-            ["Expiry", "30 days from grant"],
-            ["Targets", "ERC-20 contracts only"],
-          ].map(([label, value], i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: i < 4 ? "1px solid #1e1e3a20" : "none" }}>
-              <span style={{ color: "#6b7280", fontSize: 11 }}>{label}</span>
-              <span style={{ color: "#c8ccd0", fontSize: 11, fontWeight: 500 }}>{value}</span>
+            ["✓ Can do", "Cancel token approvals (set them to zero)", "#00ff9d"],
+            ["✗ Cannot do", "Move, spend, or transfer any of your tokens", "#ff2d55"],
+            ["Limit", "Up to 10 revocations total", "#c8ccd0"],
+            ["Expires", "Automatically after 30 days", "#c8ccd0"],
+            ["Revocable", "Cancel the permission anytime", "#c8ccd0"],
+          ].map(([label, value, color], i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "7px 0", borderBottom: i < 4 ? "1px solid #1e1e3a20" : "none" }}>
+              <span style={{ color, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>{label}</span>
+              <span style={{ color: "#9aa0a6", fontSize: 11, textAlign: "right" }}>{value}</span>
             </div>
           ))}
         </div>
-        <div className="code-preview" style={{ marginBottom: 20 }}>
-          <div style={{ color: "#4a5568" }}>{"// @metamask/smart-accounts-kit — A2A redelegation"}</div>
-          <div><span className="kw">const</span> root = createDelegation({"{"}</div>
-          <div className="indent">environment, from: operator, to: coordinator,</div>
-          <div className="indent">scope: {"{"} type: <span className="str">"functionCall"</span>,</div>
-          <div className="indent2">selectors: [<span className="str">"approve(address,uint256)"</span>] {"}"},</div>
-          <div className="indent">caveats: [limitedCalls(<span className="num">10</span>), timestamp(<span className="num">30d</span>)],</div>
-          <div>{"}"});</div>
-          <div><span className="kw">const</span> child = createDelegation({"{"}</div>
-          <div className="indent">from: coordinator, to: revoker,</div>
-          <div className="indent">parentDelegation: root, <span style={{ color: "#4a5568" }}>{"// links chain"}</span></div>
-          <div className="indent">caveats: [limitedCalls(<span className="num">5</span>)],</div>
-          <div>{"}"});</div>
+
+        <div className="warn-box" style={{ marginBottom: 16 }}>
+          <span style={{ color: "#ffd60a" }}>⚠️</span> You'll sign one message in MetaMask. It moves no
+          funds. The agent's key is generated locally in your browser. (A second signature appears only
+          if you've enabled paid AI analysis — a separate spend cap.)
         </div>
-        <div className="warn-box">
-          <span style={{ color: "#ffd60a" }}>⚠️</span> One MetaMask signature grants the revoke-only delegation above. It moves no funds and is revocable at any time. The agent key is generated locally. (A second signature appears only if x402 paid inference is enabled — a separate USDC spend cap.)
-        </div>
+
+        <Collapsible title="Technical details (ERC-7710 delegation)" accent="#6366f1">
+          <p style={{ color: "#6b7280", fontSize: 11, lineHeight: 1.7, marginBottom: 12 }}>
+            Your smart account creates a scoped delegation to a Coordinator agent, which re-delegates an
+            attenuated permission to a Revoker sub-agent (agent-to-agent). The scope is restricted to
+            <code style={{ color: "#f1fa8c" }}> approve(address, 0)</code> on ERC-20 contracts only, with
+            on-chain caveats for the call limit and expiry.
+          </p>
+          <div className="code-preview">
+            <div style={{ color: "#4a5568" }}>{"// @metamask/smart-accounts-kit — A2A redelegation"}</div>
+            <div><span className="kw">const</span> root = createDelegation({"{"}</div>
+            <div className="indent">environment, from: operator, to: coordinator,</div>
+            <div className="indent">scope: {"{"} type: <span className="str">"functionCall"</span>,</div>
+            <div className="indent2">selectors: [<span className="str">"approve(address,uint256)"</span>] {"}"},</div>
+            <div className="indent">caveats: [limitedCalls(<span className="num">10</span>), timestamp(<span className="num">30d</span>)],</div>
+            <div>{"}"});</div>
+            <div><span className="kw">const</span> child = createDelegation({"{"}</div>
+            <div className="indent">from: coordinator, to: revoker,</div>
+            <div className="indent">parentDelegation: root, <span style={{ color: "#4a5568" }}>{"// links chain"}</span></div>
+            <div className="indent">caveats: [limitedCalls(<span className="num">5</span>)],</div>
+            <div>{"}"});</div>
+          </div>
+        </Collapsible>
+
         {delegationError && (
           <div
             style={{
@@ -67,11 +87,11 @@ export function DelegationView() {
               lineHeight: 1.6,
             }}
           >
-            Delegation failed: {delegationError}
+            Couldn't grant the permission: {delegationError}
           </div>
         )}
         <button className="btn btn-primary" style={{ width: "100%", padding: 12, fontSize: 13, marginTop: 16 }} onClick={grantDelegation}>
-          Sign Delegation with MetaMask
+          Sign in MetaMask to continue
         </button>
       </div>
     </div>
